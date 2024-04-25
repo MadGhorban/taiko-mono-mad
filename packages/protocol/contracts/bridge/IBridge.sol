@@ -1,151 +1,148 @@
 // SPDX-License-Identifier: MIT
-//  _____     _ _         _         _
-// |_   _|_ _(_) |_____  | |   __ _| |__ ___
-//   | |/ _` | | / / _ \ | |__/ _` | '_ (_-<
-//   |_|\__,_|_|_\_\___/ |____\__,_|_.__/__/
+pragma solidity 0.8.24;
 
-pragma solidity ^0.8.20;
+/// @title IBridge
+/// @notice The bridge used in conjunction with the {ISignalService}.
+/// @dev Ether is held by Bridges on L1 and L2s.
+/// @custom:security-contact security@taiko.xyz
+interface IBridge {
+    enum Status {
+        NEW,
+        RETRIABLE,
+        DONE,
+        FAILED,
+        RECALLED
+    }
 
-/// @title IRecallableMessageSender
+    struct Message {
+        // Message ID whose value is automatically assigned.
+        uint64 id;
+        // The max processing fee for the relayer. This fee has 3 parts:
+        // - the fee for message calldata.
+        // - the minimal fee reserve for general processing, excluding function call.
+        // - the invocation fee for the function call.
+        // Any unpaid fee will be refunded to the destOwner on the destination chain.
+        // Note that fee must be 0 if gasLimit is 0, or large enough to make the invocation fee
+        // non-zero.
+        uint64 fee;
+        // gasLimit that the processMessage call must have.
+        uint32 gasLimit;
+        // The address, EOA or contract, that interacts with this bridge.
+        // The value is automatically assigned.
+        address from;
+        // Source chain ID whose value is automatically assigned.
+        uint64 srcChainId;
+        // The owner of the message on the source chain.
+        address srcOwner;
+        // Destination chain ID where the `to` address lives.
+        uint64 destChainId;
+        // The owner of the message on the destination chain.
+        address destOwner;
+        // The destination address on the destination chain.
+        address to;
+        // value to invoke on the destination chain.
+        uint256 value;
+        // callData to invoke on the destination chain.
+        bytes data;
+    }
+
+    // Struct representing the context of a bridge operation.
+    // 2 slots
+    struct Context {
+        bytes32 msgHash; // Message hash.
+        address from; // Sender's address.
+        uint64 srcChainId; // Source chain ID.
+    }
+
+    /// @notice Emitted when a message is sent.
+    /// @param msgHash The hash of the message.
+    /// @param message The message.
+    event MessageSent(bytes32 indexed msgHash, Message message);
+
+    /// @notice Emitted when the status of a message changes.
+    /// @param msgHash The hash of the message.
+    /// @param status The new status of the message.
+    event MessageStatusChanged(bytes32 indexed msgHash, Status status);
+
+    /// @notice Sends a message to the destination chain and takes custody
+    /// of Ether required in this contract.
+    /// @param _message The message to be sent.
+    /// @return msgHash_ The hash of the sent message.
+    /// @return message_ The updated message sent.
+    function sendMessage(Message calldata _message)
+        external
+        payable
+        returns (bytes32 msgHash_, Message memory message_);
+
+    /// @notice Recalls a failed message on its source chain, releasing
+    /// associated assets.
+    /// @dev This function checks if the message failed on the source chain and
+    /// releases associated Ether or tokens.
+    /// @param _message The message whose associated Ether should be released.
+    /// @param _proof The merkle inclusion proof.
+    function recallMessage(Message calldata _message, bytes calldata _proof) external;
+
+    /// @notice Processes a bridge message on the destination chain. This
+    /// function is callable by any address, including the `message.destOwner`.
+    /// @dev The process begins by hashing the message and checking the message
+    /// status in the bridge  If the status is "NEW", the message is invoked. The
+    /// status is updated accordingly, and processing fees are refunded as
+    /// needed.
+    /// @param _message The message to be processed.
+    /// @param _proof The merkle inclusion proof.
+    function processMessage(Message calldata _message, bytes calldata _proof) external;
+
+    /// @notice Retries to invoke the messageCall after releasing associated
+    /// Ether and tokens.
+    /// @dev This function can be called by any address, including the
+    /// `message.destOwner`.
+    /// It attempts to invoke the messageCall and updates the message status
+    /// accordingly.
+    /// @param _message The message to retry.
+    /// @param _isLastAttempt Specifies if this is the last attempt to retry the
+    /// message.
+    function retryMessage(Message calldata _message, bool _isLastAttempt) external;
+
+    /// @notice Mark a message as failed if the message is currently retriable.
+    /// @dev This function can only be called by `message.destOwner`.
+    /// @param _message The message to fail.
+    /// message.
+    function failMessage(Message calldata _message) external;
+
+    /// @notice Returns the bridge state context.
+    /// @return ctx_ The context of the current bridge operation.
+    function context() external view returns (Context memory ctx_);
+
+    /// @notice Checks if the message was sent.
+    /// @param _message The message.
+    /// @return true if the message was sent.
+    function isMessageSent(Message calldata _message) external view returns (bool);
+
+    /// @notice Hash the message
+    /// @param _message The message struct variable to be hashed.
+    /// @return The message's hash.
+    function hashMessage(Message memory _message) external pure returns (bytes32);
+}
+
+/// @title IRecallableSender
 /// @notice An interface that all recallable message senders shall implement.
-interface IRecallableMessageSender {
-    function onMessageRecalled(IBridge.Message calldata message)
+interface IRecallableSender {
+    /// @notice Called when a message is recalled.
+    /// @param _message The recalled message.
+    /// @param _msgHash The hash of the recalled message.
+    function onMessageRecalled(
+        IBridge.Message calldata _message,
+        bytes32 _msgHash
+    )
         external
         payable;
 }
 
-/// @title IBridge
-/// @notice The bridge used in conjunction with the {ISignalService}.
-/// @dev Ether is held by Bridges on L1 and by the EtherVault on L2,
-/// not by token vaults.
-interface IBridge {
-    // Struct representing a message sent across the bridge.
-    struct Message {
-        // Message ID.
-        uint256 id;
-        // Message sender address (auto filled).
-        address from;
-        // Source chain ID (auto filled).
-        uint256 srcChainId;
-        // Destination chain ID where the `to` address lives (auto filled).
-        uint256 destChainId;
-        // User address of the bridged asset.
-        address user;
-        // Destination address.
-        address to;
-        // Alternate address to send any refund. If blank, defaults to user.
-        address refundTo;
-        // value to invoke on the destination chain, for ERC20 transfers.
-        uint256 value;
-        // Processing fee for the relayer. Zero if user will process themself.
-        uint256 fee;
-        // gasLimit to invoke on the destination chain, for ERC20 transfers.
-        uint256 gasLimit;
-        // callData to invoke on the destination chain, for ERC20 transfers.
-        bytes data;
-        // Optional memo.
-        string memo;
-    }
-
-    // Struct representing the context of a bridge operation.
-    struct Context {
-        bytes32 msgHash; // Message hash.
-        address from; // Sender's address.
-        uint256 srcChainId; // Source chain ID.
-    }
-
-    event SignalSent(address indexed sender, bytes32 msgHash);
-    event MessageSent(bytes32 indexed msgHash, Message message);
-    event MessageRecalled(bytes32 indexed msgHash);
-
-    /// @notice Sends a message to the destination chain and takes custody
-    /// of Ether required in this contract. All extra Ether will be refunded.
-    /// @param message The message to be sent.
-    /// @return msgHash The hash of the sent message.
-    function sendMessage(Message memory message)
-        external
-        payable
-        returns (bytes32 msgHash);
-
-    /// @notice Processes a message received from another chain.
-    /// @param message The message to process.
-    /// @param proof The proof of the cross-chain transfer.
-    function processMessage(
-        Message calldata message,
-        bytes calldata proof
-    )
-        external;
-
-    /// @notice Retries executing a message that previously failed on its
-    /// destination chain.
-    /// @param message The message to retry.
-    /// @param isLastAttempt Specifies whether this is the last attempt to send
-    /// the message.
-    function retryMessage(
-        Message calldata message,
-        bool isLastAttempt
-    )
-        external;
-
-    /// @notice Recalls a failed message on its source chain.
-    /// @param message The message to be recalled.
-    /// @param proof The proof of message processing failure.
-    function recallMessage(
-        IBridge.Message calldata message,
-        bytes calldata proof
-    )
-        external;
-
-    /// @notice Checks if the message with the given hash has been sent on its
-    /// source chain.
-    /// @param msgHash The hash of the message.
-    /// @return Returns true if the message has been sent, false otherwise.
-    function isMessageSent(bytes32 msgHash) external view returns (bool);
-
-    /// @notice Checks if the message with the given hash has been received on
-    /// its destination chain.
-    /// @param msgHash The hash of the message.
-    /// @param srcChainId The source chain ID.
-    /// @param proof The proof of message receipt.
-    /// @return Returns true if the message has been received, false otherwise.
-    function isMessageReceived(
-        bytes32 msgHash,
-        uint256 srcChainId,
-        bytes calldata proof
-    )
-        external
-        view
-        returns (bool);
-
-    /// @notice Checks if a msgHash has failed on its destination chain.
-    /// @param msgHash The hash of the message.
-    /// @param destChainId The destination chain ID.
-    /// @param proof The proof of message failure.
-    /// @return Returns true if the message has failed, false otherwise.
-    function isMessageFailed(
-        bytes32 msgHash,
-        uint256 destChainId,
-        bytes calldata proof
-    )
-        external
-        view
-        returns (bool);
-
-    /// @notice Checks if a failed message has been recalled on its source
-    /// chain.
-    /// @param msgHash The hash of the message.
-    /// @return Returns true if the Ether has been released, false otherwise.
-    function isMessageRecalled(bytes32 msgHash) external view returns (bool);
-
-    /// @notice Returns the bridge state context.
-    /// @return context The context of the current bridge operation.
-    function context() external view returns (Context memory context);
-
-    /// @notice Computes the hash of a given message.
-    /// @param message The message to compute the hash for.
-    /// @return Returns the hash of the message.
-    function hashMessage(IBridge.Message calldata message)
-        external
-        pure
-        returns (bytes32);
+/// @title IMessageInvocable
+/// @notice An interface that all bridge message receiver shall implement
+interface IMessageInvocable {
+    /// @notice Called when this contract is the bridge target.
+    /// @param _data The data for this contract to interpret.
+    /// @dev This method should be guarded with `onlyFromNamed("bridge")`.
+    function onMessageInvocation(bytes calldata _data) external payable;
 }

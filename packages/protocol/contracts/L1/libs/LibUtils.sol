@@ -1,105 +1,131 @@
 // SPDX-License-Identifier: MIT
-//  _____     _ _         _         _
-// |_   _|_ _(_) |_____  | |   __ _| |__ ___
-//   | |/ _` | | / / _ \ | |__/ _` | '_ (_-<
-//   |_|\__,_|_|_\_\___/ |____\__,_|_.__/__/
+pragma solidity 0.8.24;
 
-pragma solidity ^0.8.20;
+import "../../libs/LibMath.sol";
+import "../TaikoData.sol";
 
-import { LibDepositing } from "./LibDepositing.sol";
-import { LibMath } from "../../libs/LibMath.sol";
-import { TaikoData } from "../TaikoData.sol";
-
+/// @title LibUtils
+/// @notice A library that offers helper functions.
+/// @custom:security-contact security@taiko.xyz
 library LibUtils {
     using LibMath for uint256;
 
-    address internal constant ORACLE_PROVER = address(1);
-
+    // Warning: Any errors defined here must also be defined in TaikoErrors.sol.
+    error L1_BLOCK_MISMATCH();
     error L1_INVALID_BLOCK_ID();
+    error L1_TRANSITION_NOT_FOUND();
+    error L1_UNEXPECTED_TRANSITION_ID();
 
+    /// @notice This function will revert if the transition is not found.
+    /// @dev Retrieves the transition with a given parentHash.
+    /// @param _state Current TaikoData.State.
+    /// @param _config Actual TaikoData.Config.
+    /// @param _blockId Id of the block.
+    /// @param _parentHash Parent hash of the block.
+    /// @return The state transition data of the block.
+    function getTransition(
+        TaikoData.State storage _state,
+        TaikoData.Config memory _config,
+        uint64 _blockId,
+        bytes32 _parentHash
+    )
+        internal
+        view
+        returns (TaikoData.TransitionState storage)
+    {
+        _checkBlockId(_state, _blockId);
+        (TaikoData.Block storage blk, uint64 slot) = getBlock(_state, _config, _blockId);
+
+        uint32 tid = getTransitionId(_state, blk, slot, _parentHash);
+        if (tid == 0) revert L1_TRANSITION_NOT_FOUND();
+
+        return _state.transitions[slot][tid];
+    }
+
+    /// @notice This function will revert if the transition is not found.
+    /// @dev Retrieves the transition with a given parentHash.
+    /// @param _state Current TaikoData.State.
+    /// @param _config Actual TaikoData.Config.
+    /// @param _blockId Id of the block.
+    /// @param _tid The transition id.
+    /// @return The state transition data of the block.
+    function getTransition(
+        TaikoData.State storage _state,
+        TaikoData.Config memory _config,
+        uint64 _blockId,
+        uint32 _tid
+    )
+        internal
+        view
+        returns (TaikoData.TransitionState storage)
+    {
+        _checkBlockId(_state, _blockId);
+        (TaikoData.Block storage blk, uint64 slot) = getBlock(_state, _config, _blockId);
+
+        if (_tid == 0 || _tid >= blk.nextTransitionId) revert L1_TRANSITION_NOT_FOUND();
+        return _state.transitions[slot][_tid];
+    }
+
+    /// @dev Retrieves a block based on its ID.
+    /// @param _state Current TaikoData.State.
+    /// @param _config Actual TaikoData.Config.
+    /// @param _blockId Id of the block.
+    function getBlock(
+        TaikoData.State storage _state,
+        TaikoData.Config memory _config,
+        uint64 _blockId
+    )
+        internal
+        view
+        returns (TaikoData.Block storage blk_, uint64 slot_)
+    {
+        slot_ = _blockId % _config.blockRingBufferSize;
+        blk_ = _state.blocks[slot_];
+        if (blk_.blockId != _blockId) {
+            revert L1_INVALID_BLOCK_ID();
+        }
+    }
+
+    /// @dev Retrieves the ID of the transition with a given parentHash.
+    /// This function will return 0 if the transition is not found.
     function getTransitionId(
-        TaikoData.State storage state,
-        TaikoData.Block storage blk,
-        uint64 slot,
-        bytes32 parentHash
+        TaikoData.State storage _state,
+        TaikoData.Block storage _blk,
+        uint64 _slot,
+        bytes32 _parentHash
     )
         internal
         view
-        returns (uint32 tid)
+        returns (uint32 tid_)
     {
-        if (state.transitions[slot][1].key == parentHash) {
-            tid = 1;
+        if (_state.transitions[_slot][1].key == _parentHash) {
+            tid_ = 1;
         } else {
-            tid = state.transitionIds[blk.blockId][parentHash];
+            tid_ = _state.transitionIds[_blk.blockId][_parentHash];
         }
 
-        assert(tid < blk.nextTransitionId);
+        if (tid_ >= _blk.nextTransitionId) revert L1_UNEXPECTED_TRANSITION_ID();
     }
 
-    function getVerifyingTransition(
-        TaikoData.State storage state,
-        TaikoData.Config memory config,
-        uint64 blockId
+    function isPostDeadline(
+        uint256 _tsTimestamp,
+        uint256 _lastUnpausedAt,
+        uint256 _windowMinutes
     )
         internal
         view
-        returns (TaikoData.Transition memory transition)
+        returns (bool)
     {
-        uint64 id = blockId == 0 ? state.slotB.lastVerifiedBlockId : blockId;
-        uint64 slot = id % config.blockRingBufferSize;
-
-        TaikoData.Block storage blk = state.blocks[slot];
-        if (blk.blockId == id) {
-            transition = state.transitions[slot][blk.verifiedTransitionId];
+        unchecked {
+            uint256 deadline = _tsTimestamp.max(_lastUnpausedAt) + _windowMinutes * 60;
+            return block.timestamp >= deadline;
         }
     }
 
-    function getStateVariables(TaikoData.State storage state)
-        internal
-        view
-        returns (TaikoData.StateVariables memory)
-    {
-        TaikoData.SlotA memory a = state.slotA;
-        TaikoData.SlotB memory b = state.slotB;
-
-        return TaikoData.StateVariables({
-            genesisHeight: a.genesisHeight,
-            genesisTimestamp: a.genesisTimestamp,
-            numBlocks: b.numBlocks,
-            lastVerifiedBlockId: b.lastVerifiedBlockId,
-            nextEthDepositToProcess: a.nextEthDepositToProcess,
-            numEthDeposits: a.numEthDeposits - a.nextEthDepositToProcess
-        });
-    }
-
-    /// @dev Hashing the block metadata.
-    function hashMetadata(TaikoData.BlockMetadata memory meta)
-        internal
-        pure
-        returns (bytes32 hash)
-    {
-        uint256[6] memory inputs;
-
-        inputs[0] = (uint256(meta.id) << 192) | (uint256(meta.timestamp) << 128)
-            | (uint256(meta.l1Height) << 64);
-
-        inputs[1] = uint256(meta.l1Hash);
-        inputs[2] = uint256(meta.mixHash);
-        inputs[3] =
-            uint256(LibDepositing.hashEthDeposits(meta.depositsProcessed));
-        inputs[4] = uint256(meta.txListHash);
-
-        inputs[5] = (uint256(meta.txListByteStart) << 232)
-            | (uint256(meta.txListByteEnd) << 208) //
-            | (uint256(meta.gasLimit) << 176)
-            | (uint256(uint160(meta.proposer)) << 16);
-
-        assembly {
-            hash := keccak256(inputs, mul(6, 32))
+    function _checkBlockId(TaikoData.State storage _state, uint64 _blockId) private view {
+        TaikoData.SlotB memory b = _state.slotB;
+        if (_blockId < b.lastVerifiedBlockId || _blockId >= b.numBlocks) {
+            revert L1_INVALID_BLOCK_ID();
         }
-    }
-
-    function getVerifierName(uint16 id) internal pure returns (bytes32) {
-        return bytes32(uint256(0x1000000) + id);
     }
 }

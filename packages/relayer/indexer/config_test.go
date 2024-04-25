@@ -5,9 +5,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
+	"github.com/taikoxyz/taiko-mono/packages/relayer"
 	"github.com/taikoxyz/taiko-mono/packages/relayer/cmd/flags"
-	"github.com/taikoxyz/taiko-mono/packages/relayer/mock"
-	"github.com/taikoxyz/taiko-mono/packages/relayer/queue"
+	"github.com/taikoxyz/taiko-mono/packages/relayer/pkg/mock"
+	"github.com/taikoxyz/taiko-mono/packages/relayer/pkg/queue"
 	"github.com/urfave/cli/v2"
 )
 
@@ -24,7 +25,7 @@ var (
 	subscriptionBackoff     = "30"
 	syncMode                = "sync"
 	watchMode               = "filter"
-	HTTPPort                = "1000"
+	eventName               = relayer.EventNameMessageSent
 )
 
 func setupApp() *cli.App {
@@ -57,7 +58,6 @@ func TestNewConfigFromCliContext(t *testing.T) {
 		assert.Equal(t, common.HexToAddress(destBridgeAddr), c.DestBridgeAddress)
 		assert.Equal(t, common.HexToAddress(srcBridgeAddr), c.SrcBridgeAddress)
 		assert.Equal(t, common.HexToAddress(srcTaikoAddr), c.SrcTaikoAddress)
-		assert.Equal(t, []string{"*"}, c.CORSOrigins)
 		assert.Equal(t, uint64(10), c.ETHClientTimeout)
 		assert.Equal(t, uint64(10), c.DatabaseMaxIdleConns)
 		assert.Equal(t, uint64(10), c.DatabaseMaxOpenConns)
@@ -67,7 +67,7 @@ func TestNewConfigFromCliContext(t *testing.T) {
 		assert.Equal(t, uint64(30), c.SubscriptionBackoff)
 		assert.Equal(t, SyncMode(syncMode), c.SyncMode)
 		assert.Equal(t, WatchMode(watchMode), c.WatchMode)
-		assert.Equal(t, uint64(1000), c.HTTPPort)
+		assert.Equal(t, eventName, c.EventName)
 
 		c.OpenDBFunc = func() (DB, error) {
 			return &mock.DB{}, nil
@@ -97,7 +97,6 @@ func TestNewConfigFromCliContext(t *testing.T) {
 		"--" + flags.DestBridgeAddress.Name, destBridgeAddr,
 		"--" + flags.SrcBridgeAddress.Name, srcBridgeAddr,
 		"--" + flags.SrcTaikoAddress.Name, srcTaikoAddr,
-		"--" + flags.CORSOrigins.Name, "*",
 		"--" + flags.ETHClientTimeout.Name, ethClientTimeout,
 		"--" + flags.DatabaseMaxOpenConns.Name, databaseMaxOpenConns,
 		"--" + flags.DatabaseMaxIdleConns.Name, databaseMaxIdleConns,
@@ -107,6 +106,6 @@ func TestNewConfigFromCliContext(t *testing.T) {
 		"--" + flags.SubscriptionBackoff.Name, subscriptionBackoff,
 		"--" + flags.SyncMode.Name, syncMode,
 		"--" + flags.WatchMode.Name, watchMode,
-		"--" + flags.HTTPPort.Name, HTTPPort,
+		"--" + flags.EventName.Name, eventName,
 	}))
 }

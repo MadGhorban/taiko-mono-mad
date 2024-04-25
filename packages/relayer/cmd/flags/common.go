@@ -8,6 +8,9 @@ var (
 	commonCategory    = "COMMON"
 	indexerCategory   = "INDEXER"
 	processorCategory = "PROCESSOR"
+	watchdogCategory  = "WATCHDOG"
+	bridgeCategory    = "BRIDGE"
+	txmgrCategory     = "TX_MANAGER"
 )
 
 var (
@@ -39,34 +42,6 @@ var (
 		Category: commonCategory,
 		EnvVars:  []string{"DATABASE_NAME"},
 	}
-	QueueUsername = &cli.StringFlag{
-		Name:     "queue.username",
-		Usage:    "Queue connection username",
-		Required: true,
-		Category: commonCategory,
-		EnvVars:  []string{"QUEUE_USER"},
-	}
-	QueuePassword = &cli.StringFlag{
-		Name:     "queue.password",
-		Usage:    "Queue connection password",
-		Required: true,
-		Category: commonCategory,
-		EnvVars:  []string{"QUEUE_PASSWORD"},
-	}
-	QueueHost = &cli.StringFlag{
-		Name:     "queue.host",
-		Usage:    "Queue connection host",
-		Required: true,
-		Category: commonCategory,
-		EnvVars:  []string{"QUEUE_HOST"},
-	}
-	QueuePort = &cli.Uint64Flag{
-		Name:     "queue.port",
-		Usage:    "Queue connection port",
-		Required: true,
-		Category: commonCategory,
-		EnvVars:  []string{"QUEUE_PORT"},
-	}
 	SrcRPCUrl = &cli.StringFlag{
 		Name:     "srcRpcUrl",
 		Usage:    "RPC URL for the source chain",
@@ -80,13 +55,6 @@ var (
 		Required: true,
 		Category: commonCategory,
 		EnvVars:  []string{"DEST_RPC_URL"},
-	}
-	DestBridgeAddress = &cli.StringFlag{
-		Name:     "destBridgeAddress",
-		Usage:    "Bridge address for the destination chain",
-		Required: true,
-		Category: commonCategory,
-		EnvVars:  []string{"DEST_BRIDGE_ADDRESS"},
 	}
 )
 
@@ -126,6 +94,24 @@ var (
 		Value:    10,
 		EnvVars:  []string{"ETH_CLIENT_TIMEOUT"},
 	}
+	SrcSignalServiceAddress = &cli.StringFlag{
+		Name:     "srcSignalServiceAddress",
+		Usage:    "SignalService address for the source chain",
+		Category: commonCategory,
+		EnvVars:  []string{"SRC_SIGNAL_SERVICE_ADDRESS"},
+	}
+	BackOffRetryInterval = &cli.Uint64Flag{
+		Name:     "backoff.retryInterval",
+		Usage:    "Retry interval in seconds when there is an error",
+		Category: processorCategory,
+		Value:    12,
+	}
+	BackOffMaxRetrys = &cli.Uint64Flag{
+		Name:     "backoff.maxRetrys",
+		Usage:    "Max retry times when there is an error",
+		Category: processorCategory,
+		Value:    3,
+	}
 )
 
 // All common flags.
@@ -135,19 +121,17 @@ var CommonFlags = []cli.Flag{
 	DatabasePassword,
 	DatabaseHost,
 	DatabaseName,
-	QueueUsername,
-	QueuePassword,
-	QueueHost,
-	QueuePort,
 	SrcRPCUrl,
 	DestRPCUrl,
-	DestBridgeAddress,
 	// optional
 	DatabaseMaxIdleConns,
 	DatabaseConnMaxLifetime,
 	DatabaseMaxOpenConns,
 	MetricsHTTPPort,
 	ETHClientTimeout,
+	SrcSignalServiceAddress,
+	BackOffMaxRetrys,
+	BackOffRetryInterval,
 }
 
 // MergeFlags merges the given flag slices.

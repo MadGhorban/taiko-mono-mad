@@ -12,6 +12,13 @@ var (
 		Category: indexerCategory,
 		EnvVars:  []string{"SRC_BRIDGE_ADDRESS"},
 	}
+	DestBridgeAddress = &cli.StringFlag{
+		Name:     "destBridgeAddress",
+		Usage:    "Bridge address for the destination chain",
+		Required: true,
+		Category: commonCategory,
+		EnvVars:  []string{"DEST_BRIDGE_ADDRESS"},
+	}
 )
 
 // optional
@@ -50,10 +57,11 @@ var (
 		filter: only filter the chain, when caught up, exit
 		subscribe: do not filter the chain, only subscribe to new events
 		filter-and-subscribe: the default behavior, filter the chain and subscribe when caught up
+		crawl-past-blocks: crawl past blocks
 		`,
 		Value:    "filter-and-subscribe",
 		Category: indexerCategory,
-		EnvVars:  []string{"SYNC_MODE"},
+		EnvVars:  []string{"WATCH_MODE"},
 	}
 	SrcTaikoAddress = &cli.StringFlag{
 		Name:     "srcTaikoAddress",
@@ -61,31 +69,39 @@ var (
 		Category: indexerCategory,
 		EnvVars:  []string{"SRC_TAIKO_ADDRESS"},
 	}
-	HTTPPort = &cli.Uint64Flag{
-		Name:     "http.port",
-		Usage:    "Port to run http server on",
+	NumLatestBlocksToIgnoreWhenCrawling = &cli.Uint64Flag{
+		Name:     "numLatestBlocksToIgnoreWhenCrawling",
+		Usage:    "Number of blocks to ignore when crawling chain, should be higher for L2-L1 indexing due to delay",
+		Value:    1000,
 		Category: indexerCategory,
-		Value:    4102,
-		EnvVars:  []string{"HTTP_PORT"},
+		EnvVars:  []string{"NUM_LATEST_BLOCKS_TO_IGNORE_WHEN_CRAWLING"},
 	}
-	CORSOrigins = &cli.StringFlag{
-		Name:     "http.corsOrigins",
-		Usage:    "Comma-delinated list of cors origins",
+	EventName = &cli.StringFlag{
+		Name:     "event",
+		Usage:    "Type of event to index, ie: MessageSent, MessageReceived",
 		Category: indexerCategory,
-		Value:    "*",
-		EnvVars:  []string{"HTTP_CORS_ORIGINS"},
+		EnvVars:  []string{"EVENT_NAME"},
+	}
+	TargetBlockNumber = &cli.Uint64Flag{
+		Name:     "targetBlockNumber",
+		Usage:    "Specify the target block number to process transactions in",
+		Required: false,
+		Category: indexerCategory,
+		EnvVars:  []string{"TARGET_BLOCK_NUMBER"},
 	}
 )
 
-var IndexerFlags = MergeFlags(CommonFlags, []cli.Flag{
+var IndexerFlags = MergeFlags(CommonFlags, QueueFlags, []cli.Flag{
 	SrcBridgeAddress,
+	DestBridgeAddress,
 	// optional
-	HTTPPort,
 	SrcTaikoAddress,
 	BlockBatchSize,
 	MaxNumGoroutines,
 	SubscriptionBackoff,
 	SyncMode,
 	WatchMode,
-	CORSOrigins,
+	NumLatestBlocksToIgnoreWhenCrawling,
+	EventName,
+	TargetBlockNumber,
 })

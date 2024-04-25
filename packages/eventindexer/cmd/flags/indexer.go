@@ -4,7 +4,7 @@ import "github.com/urfave/cli/v2"
 
 // required flags
 var (
-	RPCUrl = &cli.StringFlag{
+	IndexerRPCUrl = &cli.StringFlag{
 		Name:     "rpcUrl",
 		Usage:    "RPC URL for the source chain",
 		Required: true,
@@ -15,22 +15,6 @@ var (
 
 // optional flags
 var (
-	HTTPPort = &cli.Uint64Flag{
-		Name:     "http.port",
-		Usage:    "Port to run http server on",
-		Category: indexerCategory,
-		Required: false,
-		Value:    4102,
-		EnvVars:  []string{"HTTP_PORT"},
-	}
-	MetricsHTTPPort = &cli.Uint64Flag{
-		Name:     "metrics.port",
-		Usage:    "Port to run metrics http server on",
-		Category: indexerCategory,
-		Required: false,
-		Value:    6061,
-		EnvVars:  []string{"METRICS_HTTP_PORT"},
-	}
 	ETHClientTimeout = &cli.Uint64Flag{
 		Name:     "ethClientTimeout",
 		Usage:    "Timeout for eth client and contract binding calls",
@@ -60,12 +44,19 @@ var (
 		Category: indexerCategory,
 		EnvVars:  []string{"SWAP_ADDRESSES"},
 	}
-	CORSOrigins = &cli.StringFlag{
-		Name:     "http.corsOrigins",
-		Usage:    "Comma-delinated list of cors origins",
+	AssignmentHookAddress = &cli.StringFlag{
+		Name:     "assignmentHookAddress",
+		Usage:    "Address of the AssignmentHook contract",
 		Required: false,
-		Value:    "*",
 		Category: indexerCategory,
+		EnvVars:  []string{"ASSIGNMENT_HOOK_ADDRESS"},
+	}
+	SgxVerifierAddress = &cli.StringFlag{
+		Name:     "sgxVerifierAddress",
+		Usage:    "Address of the SGXVerifier contract",
+		Required: false,
+		Category: indexerCategory,
+		EnvVars:  []string{"SGX_VERIFIER_ADDRESS"},
 	}
 	BlockBatchSize = &cli.Uint64Flag{
 		Name:     "blockBatchSize",
@@ -90,48 +81,26 @@ var (
 		Category: indexerCategory,
 		EnvVars:  []string{"SYNC_MODE"},
 	}
-	WatchMode = &cli.StringFlag{
-		Name: "watchMode",
-		Usage: `Mode of watching the chain. Options are:
-		filter: only filter the chain, when caught up, exit
-		subscribe: do not filter the chain, only subscribe to new events
-		filter-and-subscribe: the default behavior, filter the chain and subscribe when caught up
-		`,
-		Value:    "filter-and-subscribe",
-		Category: indexerCategory,
-		EnvVars:  []string{"SYNC_MODE"},
-	}
 	IndexNFTs = &cli.BoolFlag{
 		Name:     "indexNfts",
-		Usage:    "Whether to index nft transfer events orn ot",
+		Usage:    "Whether to index nft transfer events or not",
 		Required: false,
 		Category: indexerCategory,
 		EnvVars:  []string{"INDEX_NFTS"},
 	}
-	Layer = &cli.StringFlag{
-		Name:     "layer",
-		Usage:    "Which layer indexing is occurring on",
-		Required: false,
-		Value:    "l1",
-		Category: indexerCategory,
-		EnvVars:  []string{"LAYER"},
-	}
 )
 
 var IndexerFlags = MergeFlags(CommonFlags, []cli.Flag{
-	RPCUrl,
+	IndexerRPCUrl,
 	// optional
 	ETHClientTimeout,
 	L1TaikoAddress,
-	HTTPPort,
-	MetricsHTTPPort,
 	BridgeAddress,
 	SwapAddresses,
-	CORSOrigins,
+	SgxVerifierAddress,
+	AssignmentHookAddress,
 	BlockBatchSize,
 	SubscriptionBackoff,
 	SyncMode,
-	WatchMode,
 	IndexNFTs,
-	Layer,
 })

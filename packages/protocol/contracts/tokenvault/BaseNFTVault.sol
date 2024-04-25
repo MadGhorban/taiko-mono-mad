@@ -1,33 +1,16 @@
 // SPDX-License-Identifier: MIT
-//  _____     _ _         _         _
-// |_   _|_ _(_) |_____  | |   __ _| |__ ___
-//   | |/ _` | | / / _ \ | |__/ _` | '_ (_-<
-//   |_|\__,_|_|_\_\___/ |____\__,_|_.__/__/
+pragma solidity 0.8.24;
 
-pragma solidity ^0.8.20;
-
-import { EssentialContract } from "../common/EssentialContract.sol";
-import { IERC1155Receiver } from
-    "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
-import { IERC165 } from
-    "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import { IERC721Receiver } from
-    "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-import { IERC721Upgradeable } from
-    "@openzeppelin/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol";
-import { IRecallableMessageSender, IBridge } from "../bridge/IBridge.sol";
-import { Proxied } from "../common/Proxied.sol";
+import "./BaseVault.sol";
 
 /// @title BaseNFTVault
 /// @notice Abstract contract for bridging NFTs across different chains.
-abstract contract BaseNFTVault is
-    EssentialContract,
-    IRecallableMessageSender
-{
+/// @custom:security-contact security@taiko.xyz
+abstract contract BaseNFTVault is BaseVault {
     // Struct representing the canonical NFT on another chain.
     struct CanonicalNFT {
         // Chain ID of the NFT.
-        uint256 chainId;
+        uint64 chainId;
         // Address of the NFT contract.
         address addr;
         // Symbol of the NFT.
@@ -36,94 +19,123 @@ abstract contract BaseNFTVault is
         string name;
     }
 
-    // Struct representing the details of a bridged token transfer operation.
+    /// @devStruct representing the details of a bridged token transfer operation.
+    /// 5 slots
     struct BridgeTransferOp {
-        // Destination chain ID.
-        uint256 destChainId;
-        // Recipient address.
+        uint64 destChainId;
+        address destOwner;
         address to;
-        // Address of the token.
+        uint64 fee;
         address token;
-        // IDs of the tokens to transfer.
+        uint32 gasLimit;
         uint256[] tokenIds;
-        // Amounts of tokens to transfer.
         uint256[] amounts;
-        // Gas limit for the operation.
-        uint256 gasLimit;
-        // Processing fee for the relayer.
-        uint256 fee;
-        // Address for refund, if needed.
-        address refundTo;
-        // Optional memo.
-        string memo;
     }
 
-    // Constants for interface IDs.
-    bytes4 public constant ERC1155_INTERFACE_ID = 0xd9b67a26;
-    bytes4 public constant ERC721_INTERFACE_ID = 0x80ac58cd;
+    /// @notice ERC1155 interface ID.
+    bytes4 internal constant ERC1155_INTERFACE_ID = 0xd9b67a26;
 
-    // Mapping to track bridged tokens.
-    mapping(address => bool) public isBridgedToken;
+    /// @notice ERC721 interface ID.
+    bytes4 internal constant ERC721_INTERFACE_ID = 0x80ac58cd;
 
-    // Mapping to store bridged NFTs and their canonical counterparts.
-    mapping(address => CanonicalNFT) public bridgedToCanonical;
+    /// @notice Maximum number of tokens that can be transferred per transaction.
+    uint256 public constant MAX_TOKEN_PER_TXN = 10;
 
-    // Mapping to store canonical NFTs and their bridged counterparts.
-    mapping(uint256 => mapping(address => address)) public canonicalToBridged;
+    /// @notice Mapping to store bridged NFTs and their canonical counterparts.
+    mapping(address btoken => CanonicalNFT canonical) public bridgedToCanonical;
 
-    uint256[47] private __gap;
+    /// @notice Mapping to store canonical NFTs and their bridged counterparts.
+    mapping(uint256 chainId => mapping(address ctoken => address btoken)) public canonicalToBridged;
 
+    uint256[48] private __gap;
+
+    /// @notice Emitted when a new bridged token is deployed.
+    /// @param chainId The chain ID of the bridged token.
+    /// @param ctoken The address of the canonical token.
+    /// @param btoken The address of the bridged token.
+    /// @param ctokenSymbol The symbol of the canonical token.
+    /// @param ctokenName The name of the canonical token.
     event BridgedTokenDeployed(
-        uint256 indexed chainId,
+        uint64 indexed chainId,
         address indexed ctoken,
         address indexed btoken,
         string ctokenSymbol,
         string ctokenName
     );
 
+    /// @notice Emitted when a token is sent to another chain.
+    /// @param msgHash The hash of the message.
+    /// @param from The sender of the message.
+    /// @param to The recipient of the message.
+    /// @param destChainId The destination chain ID.
+    /// @param ctoken The address of the canonical token.
+    /// @param token The address of the bridged token.
+    /// @param tokenIds The IDs of the tokens.
+    /// @param amounts The amounts of the tokens.
     event TokenSent(
         bytes32 indexed msgHash,
         address indexed from,
         address indexed to,
-        uint256 destChainId,
+        uint64 destChainId,
+        address ctoken,
         address token,
         uint256[] tokenIds,
         uint256[] amounts
     );
 
+    /// @notice Emitted when a token is released on the current chain.
+    /// @param msgHash The hash of the message.
+    /// @param from The sender of the message.
+    /// @param ctoken The address of the canonical token.
+    /// @param token The address of the bridged token.
+    /// @param tokenIds The IDs of the tokens.
+    /// @param amounts The amounts of the tokens.
     event TokenReleased(
         bytes32 indexed msgHash,
         address indexed from,
+        address ctoken,
         address token,
         uint256[] tokenIds,
         uint256[] amounts
     );
 
+    /// @notice Emitted when a token is received from another chain.
+    /// @param msgHash The hash of the message.
+    /// @param from The sender of the message.
+    /// @param to The recipient of the message.
+    /// @param srcChainId The source chain ID.
+    /// @param ctoken The address of the canonical token.
+    /// @param token The address of the bridged token.
+    /// @param tokenIds The IDs of the tokens.
+    /// @param amounts The amounts of the tokens.
     event TokenReceived(
         bytes32 indexed msgHash,
         address indexed from,
         address indexed to,
-        uint256 srcChainId,
+        uint64 srcChainId,
+        address ctoken,
         address token,
         uint256[] tokenIds,
         uint256[] amounts
     );
 
-    error VAULT_INVALID_TO();
     error VAULT_INVALID_TOKEN();
     error VAULT_INVALID_AMOUNT();
-    error VAULT_INVALID_USER();
-    error VAULT_INVALID_FROM();
-    error VAULT_INVALID_SRC_CHAIN_ID();
+    error VAULT_INVALID_TO();
     error VAULT_INTERFACE_NOT_SUPPORTED();
-    error VAULT_MESSAGE_NOT_FAILED();
-    error VAULT_MESSAGE_RELEASED_ALREADY();
     error VAULT_TOKEN_ARRAY_MISMATCH();
     error VAULT_MAX_TOKEN_PER_TXN_EXCEEDED();
 
-    /// @notice Initializes the contract with an address manager.
-    /// @param addressManager The address of the address manager.
-    function init(address addressManager) external initializer {
-        EssentialContract._init(addressManager);
+    modifier withValidOperation(BridgeTransferOp memory _op) {
+        if (_op.tokenIds.length != _op.amounts.length) {
+            revert VAULT_TOKEN_ARRAY_MISMATCH();
+        }
+
+        if (_op.tokenIds.length > MAX_TOKEN_PER_TXN) {
+            revert VAULT_MAX_TOKEN_PER_TXN_EXCEEDED();
+        }
+
+        if (_op.token == address(0)) revert VAULT_INVALID_TOKEN();
+        _;
     }
 }

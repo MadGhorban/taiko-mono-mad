@@ -6,8 +6,10 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"github.com/taikoxyz/taiko-mono/packages/eventindexer/api"
 	"github.com/taikoxyz/taiko-mono/packages/eventindexer/cmd/flags"
 	"github.com/taikoxyz/taiko-mono/packages/eventindexer/cmd/utils"
+	"github.com/taikoxyz/taiko-mono/packages/eventindexer/disperser"
 	"github.com/taikoxyz/taiko-mono/packages/eventindexer/generator"
 	"github.com/taikoxyz/taiko-mono/packages/eventindexer/indexer"
 	"github.com/urfave/cli/v2"
@@ -28,7 +30,7 @@ func main() {
 	_ = godotenv.Load(envFile)
 
 	app.Name = "Taiko EventIndexer"
-	app.Usage = "The taiko eventindexing softwares command line interface"
+	app.Usage = "The taiko eventindexing software command line interface"
 	app.Copyright = "Copyright 2021-2023 Taiko Labs"
 	app.Description = "Eventindexer implementation in Golang for Taiko protocol"
 	app.Authors = []*cli.Author{{Name: "Taiko Labs", Email: "info@taiko.xyz"}}
@@ -36,6 +38,13 @@ func main() {
 
 	// All supported sub commands.
 	app.Commands = []*cli.Command{
+		{
+			Name:        "api",
+			Flags:       flags.APIFlags,
+			Usage:       "Starts the http API software",
+			Description: "Taiko eventindexer http API software",
+			Action:      utils.SubcommandAction(new(api.API)),
+		},
 		{
 			Name:        "indexer",
 			Flags:       flags.IndexerFlags,
@@ -49,6 +58,13 @@ func main() {
 			Usage:       "Starts the generator software",
 			Description: "Taiko time-series data generator",
 			Action:      utils.SubcommandAction(new(generator.Generator)),
+		},
+		{
+			Name:        "disperser",
+			Flags:       flags.DisperserFlags,
+			Usage:       "Starts the disperser software",
+			Description: "Taiko TTKO disperser",
+			Action:      utils.SubcommandAction(new(disperser.Disperser)),
 		},
 	}
 

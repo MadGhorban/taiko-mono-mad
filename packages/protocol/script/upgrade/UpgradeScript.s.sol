@@ -1,32 +1,43 @@
 // SPDX-License-Identifier: MIT
-//  _____     _ _         _         _
-// |_   _|_ _(_) |_____  | |   __ _| |__ ___
-//   | |/ _` | | / / _ \ | |__/ _` | '_ (_-<
-//   |_|\__,_|_|_\_\___/ |____\__,_|_.__/__/
+pragma solidity 0.8.24;
 
-pragma solidity ^0.8.20;
+import "../../contracts/L1/gov/TaikoTimelockController.sol";
+import "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-import "forge-std/Script.sol";
-import "forge-std/console2.sol";
-import
-    "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import "forge-std/src/console2.sol";
+import "forge-std/src/Script.sol";
 
 contract UpgradeScript is Script {
-    uint256 public deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-
+    uint256 public privateKey = vm.envUint("PRIVATE_KEY");
+    address public timelockAddress = vm.envAddress("TIMELOCK_ADDRESS");
     address public proxyAddress = vm.envAddress("PROXY_ADDRESS");
 
-    TransparentUpgradeableProxy proxy;
+    UUPSUpgradeable proxy;
+    TaikoTimelockController timelock;
 
     modifier setUp() {
-        require(deployerPrivateKey != 0, "PRIVATE_KEY not set");
+        require(privateKey != 0, "PRIVATE_KEY not set");
         require(proxyAddress != address(0), "PROXY_ADDRESS not set");
+        require(timelockAddress != address(0), "TIMELOCK_ADDRESS not set");
 
-        vm.startBroadcast(deployerPrivateKey);
+        proxy = UUPSUpgradeable(payable(proxyAddress));
+        timelock = TaikoTimelockController(payable(timelockAddress));
 
-        proxy = TransparentUpgradeableProxy(payable(proxyAddress));
+        vm.startBroadcast(privateKey);
+
         _;
 
         vm.stopBroadcast();
+    }
+
+    function upgrade(address newImpl) public {
+        bytes32 salt = bytes32(block.timestamp);
+
+        bytes memory payload =
+            abi.encodeWithSelector(bytes4(keccak256("upgradeTo(address)")), newImpl);
+
+        timelock.schedule(address(proxy), 0, payload, bytes32(0), salt, 0);
+
+        timelock.execute(address(proxy), 0, payload, bytes32(0), salt);
     }
 }

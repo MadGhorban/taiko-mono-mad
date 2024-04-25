@@ -2,10 +2,7 @@ import { ethers } from "ethers";
 import { Result } from "./interface";
 const path = require("path");
 const ARTIFACTS_PATH = path.join(__dirname, "../../out");
-const {
-    computeStorageSlots,
-    getStorageLayout,
-} = require("@defi-wonderland/smock/dist/src/utils");
+const { computeStorageSlots, getStorageLayout } = require("./utils");
 
 export const TOKEN_NAME = "RegularERC20";
 export const TOKEN_SYMBOL = "RGL";
@@ -15,17 +12,16 @@ export const PREMINT_SEED_ACCOUNT_BALANCE = ethers.BigNumber.from(1024000);
 // and premints some tokens for the seed accounts given in the configurations.
 export async function deployERC20(
     config: any,
-    result: Result
+    result: Result,
 ): Promise<Result> {
     const { contractOwner, chainId, seedAccounts } = config;
 
     const alloc: any = {};
     const storageLayouts: any = {};
 
-    const artifact = require(path.join(
-        ARTIFACTS_PATH,
-        "./RegularERC20.sol/RegularERC20.json"
-    ));
+    const artifact = require(
+        path.join(ARTIFACTS_PATH, "./RegularERC20.sol/RegularERC20.json"),
+    );
 
     artifact.contractName = "RegularERC20";
 
@@ -39,9 +35,9 @@ export async function deployERC20(
         address = ethers.utils.getCreate2Address(
             contractOwner,
             ethers.utils.keccak256(
-                ethers.utils.toUtf8Bytes(`${chainId}${artifact.contractName}`)
+                ethers.utils.toUtf8Bytes(`${chainId}${artifact.contractName}`),
             ),
-            ethers.utils.keccak256(ethers.utils.toUtf8Bytes(artifact.bytecode))
+            ethers.utils.keccak256(ethers.utils.toUtf8Bytes(artifact.bytecode)),
         );
     }
 
@@ -65,12 +61,12 @@ export async function deployERC20(
     };
 
     storageLayouts[artifact.contractName] = await getStorageLayout(
-        artifact.contractName
+        artifact.contractName,
     );
 
     for (const slot of computeStorageSlots(
         storageLayouts[artifact.contractName],
-        variables
+        variables,
     )) {
         alloc[address].storage[slot.key] = slot.val;
     }
@@ -78,7 +74,7 @@ export async function deployERC20(
     result.alloc = Object.assign(result.alloc, alloc);
     result.storageLayouts = Object.assign(
         result.storageLayouts,
-        storageLayouts
+        storageLayouts,
     );
 
     return result;

@@ -1,95 +1,60 @@
 // SPDX-License-Identifier: MIT
-//  _____     _ _         _         _
-// |_   _|_ _(_) |_____  | |   __ _| |__ ___
-//   | |/ _` | | / / _ \ | |__/ _` | '_ (_-<
-//   |_|\__,_|_|_\_\___/ |____\__,_|_.__/__/
+pragma solidity 0.8.24;
 
-pragma solidity ^0.8.20;
-
-import { OwnableUpgradeable } from
-    "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import { Proxied } from "./Proxied.sol";
-
-/// @title IAddressManager
-/// @notice Specifies methods to manage address mappings for given domain-name
-/// pairs.
-interface IAddressManager {
-    /// @notice Sets the address for a specific domain-name pair.
-    /// @param domain The domain to which the address will be mapped.
-    /// @param name The name to which the address will be mapped.
-    /// @param newAddress The Ethereum address to be mapped.
-    function setAddress(
-        uint256 domain,
-        bytes32 name,
-        address newAddress
-    )
-        external;
-
-    /// @notice Gets the address mapped to a specific domain-name pair.
-    /// @param domain The domain for which the address needs to be fetched.
-    /// @param name The name for which the address needs to be fetched.
-    /// @return Address associated with the domain-name pair.
-    function getAddress(
-        uint256 domain,
-        bytes32 name
-    )
-        external
-        view
-        returns (address);
-}
+import "./EssentialContract.sol";
 
 /// @title AddressManager
-/// @notice Manages a mapping of domain-name pairs to Ethereum addresses.
-contract AddressManager is OwnableUpgradeable, IAddressManager {
-    mapping(uint256 => mapping(bytes32 => address)) private addresses;
+/// @notice See the documentation in {IAddressManager}.
+/// @custom:security-contact security@taiko.xyz
+contract AddressManager is EssentialContract, IAddressManager {
+    /// @dev Mapping of chainId to mapping of name to address.
+    mapping(uint256 chainId => mapping(bytes32 name => address addr)) private __addresses;
 
+    uint256[49] private __gap;
+
+    /// @notice Emitted when an address is set.
+    /// @param chainId The chainId for the address mapping.
+    /// @param name The name for the address mapping.
+    /// @param newAddress The new address.
+    /// @param oldAddress The old address.
     event AddressSet(
-        uint256 indexed domain,
-        bytes32 indexed name,
-        address newAddress,
-        address oldAddress
+        uint64 indexed chainId, bytes32 indexed name, address newAddress, address oldAddress
     );
 
-    error EOA_OWNER_NOT_ALLOWED();
+    error AM_ADDRESS_ALREADY_SET();
+    error AM_PAUSE_UNSUPPORTED();
 
-    /// @notice Initializes the owner for the upgradable contract.
-    function init() external initializer {
-        OwnableUpgradeable.__Ownable_init();
+    /// @notice Initializes the contract.
+    /// @param _owner The owner of this contract. msg.sender will be used if this value is zero.
+    function init(address _owner) external initializer {
+        __Essential_init(_owner);
     }
 
-    /// @inheritdoc IAddressManager
+    /// @notice Sets the address for a specific chainId-name pair.
+    /// @param _chainId The chainId to which the address will be mapped.
+    /// @param _name The name to which the address will be mapped.
+    /// @param _newAddress The Ethereum address to be mapped.
     function setAddress(
-        uint256 domain,
-        bytes32 name,
-        address newAddress
+        uint64 _chainId,
+        bytes32 _name,
+        address _newAddress
     )
         external
         virtual
         onlyOwner
     {
-        if (newAddress.code.length == 0 && newAddress == msg.sender) {
-            revert EOA_OWNER_NOT_ALLOWED();
-        }
-
-        address oldAddress = addresses[domain][name];
-        addresses[domain][name] = newAddress;
-        emit AddressSet(domain, name, newAddress, oldAddress);
+        address oldAddress = __addresses[_chainId][_name];
+        if (_newAddress == oldAddress) revert AM_ADDRESS_ALREADY_SET();
+        __addresses[_chainId][_name] = _newAddress;
+        emit AddressSet(_chainId, _name, _newAddress, oldAddress);
     }
 
     /// @inheritdoc IAddressManager
-    function getAddress(
-        uint256 domain,
-        bytes32 name
-    )
-        external
-        view
-        virtual
-        returns (address)
-    {
-        return addresses[domain][name];
+    function getAddress(uint64 _chainId, bytes32 _name) external view override returns (address) {
+        return __addresses[_chainId][_name];
+    }
+
+    function _authorizePause(address, bool) internal pure override {
+        revert AM_PAUSE_UNSUPPORTED();
     }
 }
-
-/// @title ProxiedAddressManager
-/// @notice Proxied version of the parent contract.
-contract ProxiedAddressManager is Proxied, AddressManager { }

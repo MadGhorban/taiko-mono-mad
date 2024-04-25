@@ -12,13 +12,6 @@ var (
 		Category: processorCategory,
 		EnvVars:  []string{"PROCESSOR_PRIVATE_KEY"},
 	}
-	SrcSignalServiceAddress = &cli.StringFlag{
-		Name:     "srcSignalServiceAddress",
-		Usage:    "SignalService address for the source chain",
-		Required: true,
-		Category: processorCategory,
-		EnvVars:  []string{"SRC_SIGNAL_SERVICE_ADDRESS"},
-	}
 	DestTaikoAddress = &cli.StringFlag{
 		Name:     "destTaikoAddress",
 		Usage:    "Taiko address for the destination chain",
@@ -79,18 +72,6 @@ var (
 		Category: processorCategory,
 		EnvVars:  []string{"PROFITABLE_ONLY"},
 	}
-	BackOffRetryInterval = &cli.Uint64Flag{
-		Name:     "backoff.retryInterval",
-		Usage:    "Retry interval in seconds when there is an error",
-		Category: processorCategory,
-		Value:    12,
-	}
-	BackOffMaxRetrys = &cli.Uint64Flag{
-		Name:     "backoff.maxRetrys",
-		Usage:    "Max retry times when there is an error",
-		Category: processorCategory,
-		Value:    3,
-	}
 	QueuePrefetchCount = &cli.Uint64Flag{
 		Name:     "queue.prefetch",
 		Usage:    "How many messages to prefetch",
@@ -105,10 +86,52 @@ var (
 		Category: processorCategory,
 		EnvVars:  []string{"ENABLE_TAIKO_L2"},
 	}
+	HopSignalServiceAddresses = &cli.StringSliceFlag{
+		Name:     "hopSignalServiceAddresses",
+		Usage:    "SignalService addresses for the intermediary chains",
+		Required: false,
+		Category: processorCategory,
+		EnvVars:  []string{"HOP_SIGNAL_SERVICE_ADDRESSES"},
+	}
+	HopTaikoAddresses = &cli.StringSliceFlag{
+		Name:     "hopTaikoAddresses",
+		Usage:    "Taiko addresses for the intermediary chains",
+		Required: false,
+		Category: processorCategory,
+		EnvVars:  []string{"HOP_TAIKO_ADDRESSES"},
+	}
+	HopRPCUrls = &cli.StringSliceFlag{
+		Name:     "hopRpcUrls",
+		Usage:    "RPC URL for the intermediary chains",
+		Required: false,
+		Category: processorCategory,
+		EnvVars:  []string{"HOP_RPC_URLS"},
+	}
+	TargetTxHash = &cli.StringFlag{
+		Name:     "targetTxHash",
+		Usage:    "Target transaction hash, set to ignore processing from queue and only process this individual transaction",
+		Category: processorCategory,
+		Required: false,
+		EnvVars:  []string{"TARGET_TX_HASH"},
+	}
+	CacheOption = &cli.IntFlag{
+		Name:     "cacheOption",
+		Usage:    "Cache option. Options: 0 - cache nothing, 1 - cache signal root, 2 - cache state root, 3 - cache both",
+		Category: processorCategory,
+		Required: false,
+		EnvVars:  []string{"CACHE_OPTION"},
+		Value:    3,
+	}
+	UnprofitableMessageQueueExpiration = &cli.StringFlag{
+		Name:     "unprofitableMessageQueueExpiration",
+		Usage:    "Time in seconds for queue message to expire when unprofitable, which will re-route it to be checked again",
+		Category: processorCategory,
+		Required: false,
+		EnvVars:  []string{"UNPROFITABLE_MESSAGE_QUEUE_EXPIRATION"},
+	}
 )
 
-var ProcessorFlags = MergeFlags(CommonFlags, []cli.Flag{
-	SrcSignalServiceAddress,
+var ProcessorFlags = MergeFlags(CommonFlags, QueueFlags, TxmgrFlags, []cli.Flag{
 	DestERC721VaultAddress,
 	DestERC1155VaultAddress,
 	DestERC20VaultAddress,
@@ -119,8 +142,13 @@ var ProcessorFlags = MergeFlags(CommonFlags, []cli.Flag{
 	Confirmations,
 	ConfirmationTimeout,
 	ProfitableOnly,
-	BackOffRetryInterval,
-	BackOffMaxRetrys,
 	QueuePrefetchCount,
 	EnableTaikoL2,
+	HopRPCUrls,
+	HopSignalServiceAddresses,
+	HopTaikoAddresses,
+	DestBridgeAddress,
+	TargetTxHash,
+	CacheOption,
+	UnprofitableMessageQueueExpiration,
 })

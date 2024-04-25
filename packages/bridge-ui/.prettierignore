@@ -1,12 +1,18 @@
-dist
-build
-coverage
+.DS_Store
 node_modules
-scripts
-example
-LICENSES
-public
-.gitignore
-.eslintignore
-.lintstagedrc
-.prettierignore
+coverage
+/build
+/.svelte-kit
+/package
+.env
+.env.*
+!.env.example
+
+# Generated files
+/src/abi/*
+CHANGELOG.md
+
+# Ignore files for PNPM, NPM and YARN
+pnpm-lock.yaml
+package-lock.json
+yarn.lock

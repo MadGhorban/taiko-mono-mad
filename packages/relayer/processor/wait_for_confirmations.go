@@ -5,10 +5,11 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/pkg/errors"
 	"github.com/taikoxyz/taiko-mono/packages/relayer"
 )
 
+// waitForConfirmations waits for the given transaction to reach N confs
+// before returning
 func (p *Processor) waitForConfirmations(ctx context.Context, txHash common.Hash, blockNumber uint64) error {
 	ctx, cancelFunc := context.WithTimeout(ctx, time.Duration(p.confTimeoutInSeconds)*time.Second)
 
@@ -20,7 +21,7 @@ func (p *Processor) waitForConfirmations(ctx context.Context, txHash common.Hash
 		p.confirmations,
 		txHash,
 	); err != nil {
-		return errors.Wrap(err, "relayer.WaitConfirmations")
+		return err
 	}
 
 	return nil

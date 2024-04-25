@@ -1,187 +1,250 @@
 // SPDX-License-Identifier: MIT
-//  _____     _ _         _         _
-// |_   _|_ _(_) |_____  | |   __ _| |__ ___
-//   | |/ _` | | / / _ \ | |__/ _` | '_ (_-<
-//   |_|\__,_|_|_\_\___/ |____\__,_|_.__/__/
+pragma solidity 0.8.24;
 
-pragma solidity ^0.8.20;
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "../../common/IAddressResolver.sol";
+import "../../common/LibStrings.sol";
+import "../../signal/ISignalService.sol";
+import "../tiers/ITierProvider.sol";
+import "./LibUtils.sol";
 
-import { Address } from "@openzeppelin/contracts/utils/Address.sol";
-import { AddressResolver } from "../../common/AddressResolver.sol";
-import { IMintableERC20 } from "../../common/IMintableERC20.sol";
-import { IProver } from "../IProver.sol";
-import { ISignalService } from "../../signal/ISignalService.sol";
-import { LibMath } from "../../libs/LibMath.sol";
-import { LibUtils } from "./LibUtils.sol";
-import { TaikoData } from "../../L1/TaikoData.sol";
-
+/// @title LibVerifying
+/// @notice A library for handling block verification in the Taiko protocol.
+/// @custom:security-contact security@taiko.xyz
 library LibVerifying {
-    using Address for address;
-    using LibUtils for TaikoData.State;
     using LibMath for uint256;
+    using SafeERC20 for IERC20;
 
+    // Warning: Any events defined here must also be defined in TaikoEvents.sol.
+    /// @notice Emitted when a block is verified.
+    /// @param blockId The block ID.
+    /// @param prover The actual prover of the block.
+    /// @param blockHash The block hash.
+    /// @param stateRoot The state root.
+    /// @param tier The tier of the transition used for verification.
     event BlockVerified(
-        uint256 indexed blockId, address indexed prover, bytes32 blockHash
+        uint256 indexed blockId,
+        address indexed prover,
+        bytes32 blockHash,
+        bytes32 stateRoot,
+        uint16 tier
     );
-    event CrossChainSynced(
-        uint64 indexed srcHeight, bytes32 blockHash, bytes32 signalRoot
-    );
-    event BondReturned(address indexed to, uint64 blockId, uint256 bond);
-    event BondRewarded(address indexed to, uint64 blockId, uint256 bond);
 
-    error L1_BLOCK_ID_MISMATCH();
+    /// @notice Emitted when some state variable values changed.
+    /// @dev This event is currently used by Taiko node/client for block proposal/proving.
+    /// @param slotB The SlotB data structure.
+    event StateVariablesUpdated(TaikoData.SlotB slotB);
+
+    // Warning: Any errors defined here must also be defined in TaikoErrors.sol.
+    error L1_BLOCK_MISMATCH();
     error L1_INVALID_CONFIG();
-    error L1_UNEXPECTED_TRANSITION_ID();
+    error L1_INVALID_GENESIS_HASH();
+    error L1_TRANSITION_ID_ZERO();
 
+    /// @notice Initializes the Taiko protocol state.
+    /// @param _state The state to initialize.
+    /// @param _config The configuration for the Taiko protocol.
+    /// @param _genesisBlockHash The block hash of the genesis block.
     function init(
-        TaikoData.State storage state,
-        TaikoData.Config memory config,
-        bytes32 genesisBlockHash
+        TaikoData.State storage _state,
+        TaikoData.Config memory _config,
+        bytes32 _genesisBlockHash
     )
         internal
     {
-        if (
-            config.chainId <= 1 //
-                || config.blockMaxProposals == 1
-                || config.blockRingBufferSize <= config.blockMaxProposals + 1
-                || config.blockMaxGasLimit == 0 || config.blockMaxTxListBytes == 0
-                || config.blockTxListExpiry > 30 * 24 hours
-                || config.blockMaxTxListBytes > 128 * 1024 //blob up to 128K
-                || config.proofRegularCooldown < config.proofOracleCooldown
-                || config.proofWindow == 0 || config.proofBond == 0
-                || config.proofBond < 10 * config.proposerRewardPerSecond
-                || config.ethDepositRingBufferSize <= 1
-                || config.ethDepositMinCountPerBlock == 0
-                || config.ethDepositMaxCountPerBlock
-                    < config.ethDepositMinCountPerBlock
-                || config.ethDepositMinAmount == 0
-                || config.ethDepositMaxAmount <= config.ethDepositMinAmount
-                || config.ethDepositMaxAmount >= type(uint96).max
-                || config.ethDepositGas == 0 || config.ethDepositMaxFee == 0
-                || config.ethDepositMaxFee >= type(uint96).max
-                || config.ethDepositMaxFee
-                    >= type(uint96).max / config.ethDepositMaxCountPerBlock
-        ) revert L1_INVALID_CONFIG();
+        if (!_isConfigValid(_config)) revert L1_INVALID_CONFIG();
+        if (_genesisBlockHash == 0) revert L1_INVALID_GENESIS_HASH();
 
         // Init state
-        state.slotA.genesisHeight = uint64(block.number);
-        state.slotA.genesisTimestamp = uint64(block.timestamp);
-        state.slotB.numBlocks = 1;
-        state.slotB.lastVerifiedAt = uint64(block.timestamp);
+        _state.slotA.genesisHeight = uint64(block.number);
+        _state.slotA.genesisTimestamp = uint64(block.timestamp);
+        _state.slotB.numBlocks = 1;
 
         // Init the genesis block
-        TaikoData.Block storage blk = state.blocks[0];
+        TaikoData.Block storage blk = _state.blocks[0];
         blk.nextTransitionId = 2;
-        blk.verifiedTransitionId = 1;
         blk.proposedAt = uint64(block.timestamp);
+        blk.verifiedTransitionId = 1;
+        blk.metaHash = bytes32(uint256(1)); // Give the genesis metahash a non-zero value.
 
         // Init the first state transition
-        TaikoData.Transition storage tran = state.transitions[0][1];
-        tran.blockHash = genesisBlockHash;
-        tran.provenAt = uint64(block.timestamp);
+        TaikoData.TransitionState storage ts = _state.transitions[0][1];
+        ts.blockHash = _genesisBlockHash;
+        ts.prover = address(0);
+        ts.timestamp = uint64(block.timestamp);
 
         emit BlockVerified({
             blockId: 0,
-            prover: LibUtils.ORACLE_PROVER,
-            blockHash: genesisBlockHash
+            prover: address(0),
+            blockHash: _genesisBlockHash,
+            stateRoot: 0,
+            tier: 0
         });
     }
 
+    /// @dev Verifies up to N blocks.
     function verifyBlocks(
-        TaikoData.State storage state,
-        TaikoData.Config memory config,
-        AddressResolver resolver,
-        uint64 maxBlocks
+        TaikoData.State storage _state,
+        TaikoData.Config memory _config,
+        IAddressResolver _resolver,
+        uint64 _maxBlocksToVerify
     )
         internal
     {
-        TaikoData.SlotB memory b = state.slotB;
+        if (_maxBlocksToVerify == 0) {
+            return;
+        }
+
+        // Retrieve the latest verified block and the associated transition used
+        // for its verification.
+        TaikoData.SlotB memory b = _state.slotB;
         uint64 blockId = b.lastVerifiedBlockId;
 
-        uint64 slot = blockId % config.blockRingBufferSize;
-        TaikoData.Block storage blk = state.blocks[slot];
-        if (blk.blockId != blockId) revert L1_BLOCK_ID_MISMATCH();
+        uint64 slot = blockId % _config.blockRingBufferSize;
+
+        TaikoData.Block storage blk = _state.blocks[slot];
+        if (blk.blockId != blockId) revert L1_BLOCK_MISMATCH();
 
         uint32 tid = blk.verifiedTransitionId;
-        if (tid == 0) revert L1_UNEXPECTED_TRANSITION_ID();
 
-        bytes32 blockHash = state.transitions[slot][tid].blockHash;
+        // The following scenario should never occur but is included as a
+        // precaution.
+        if (tid == 0) revert L1_TRANSITION_ID_ZERO();
 
-        bytes32 signalRoot;
-        TaikoData.Transition storage tran;
+        // The `blockHash` variable represents the most recently trusted
+        // blockHash on L2.
+        bytes32 blockHash = _state.transitions[slot][tid].blockHash;
+        bytes32 stateRoot;
+        uint64 numBlocksVerified;
+        address tierProvider;
 
-        uint64 processed;
+        IERC20 tko = IERC20(_resolver.resolve(LibStrings.B_TAIKO_TOKEN, false));
 
         // Unchecked is safe:
         // - assignment is within ranges
-        // - blockId and processed values incremented will still be OK in the
+        // - blockId and numBlocksVerified values incremented will still be OK in the
         // next 584K years if we verifying one block per every second
         unchecked {
             ++blockId;
 
-            while (blockId < b.numBlocks && processed < maxBlocks) {
-                slot = blockId % config.blockRingBufferSize;
-                blk = state.blocks[slot];
-                if (blk.blockId != blockId) revert L1_BLOCK_ID_MISMATCH();
+            while (blockId < b.numBlocks && numBlocksVerified < _maxBlocksToVerify) {
+                slot = blockId % _config.blockRingBufferSize;
 
-                tid = LibUtils.getTransitionId(state, blk, slot, blockHash);
+                blk = _state.blocks[slot];
+                if (blk.blockId != blockId) revert L1_BLOCK_MISMATCH();
+
+                tid = LibUtils.getTransitionId(_state, blk, slot, blockHash);
+                // When `tid` is 0, it indicates that there is no proven
+                // transition with its parentHash equal to the blockHash of the
+                // most recently verified block.
                 if (tid == 0) break;
 
-                tran = state.transitions[slot][tid];
-                if (tran.prover == address(0)) break;
+                // A transition with the correct `parentHash` has been located.
+                TaikoData.TransitionState storage ts = _state.transitions[slot][tid];
 
-                uint256 proofCooldown = tran.prover == LibUtils.ORACLE_PROVER
-                    ? config.proofOracleCooldown
-                    : config.proofRegularCooldown;
-                if (block.timestamp <= tran.provenAt + proofCooldown) {
+                // It's not possible to verify this block if either the
+                // transition is contested and awaiting higher-tier proof or if
+                // the transition is still within its cooldown period.
+                if (ts.contester != address(0)) {
                     break;
-                }
+                } else {
+                    if (tierProvider == address(0)) {
+                        tierProvider = _resolver.resolve(LibStrings.B_TIER_PROVIDER, false);
+                    }
 
-                blockHash = tran.blockHash;
-                signalRoot = tran.signalRoot;
-                blk.verifiedTransitionId = tid;
-
-                // If the default assigned prover is the oracle do not refund
-                // because was not even charged.
-                if (blk.prover != LibUtils.ORACLE_PROVER) {
-                    // Refund bond or give 1/4 of it to the actual prover and
-                    // burn the rest.
                     if (
-                        tran.prover == LibUtils.ORACLE_PROVER
-                            || tran.provenAt <= blk.proposedAt + config.proofWindow
+                        !LibUtils.isPostDeadline(
+                            ts.timestamp,
+                            b.lastUnpausedAt,
+                            ITierProvider(tierProvider).getTier(ts.tier).cooldownWindow
+                        )
                     ) {
-                        state.taikoTokenBalances[blk.prover] += blk.proofBond;
-                        emit BondReturned(blk.prover, blockId, blk.proofBond);
-                    } else {
-                        uint256 rewardAmount = blk.proofBond / 4;
-                        state.taikoTokenBalances[tran.prover] += rewardAmount;
-                        emit BondRewarded(tran.prover, blockId, rewardAmount);
+                        // If cooldownWindow is 0, the block can theoretically
+                        // be proved and verified within the same L1 block.
+                        break;
                     }
                 }
 
-                emit BlockVerified(blockId, tran.prover, tran.blockHash);
+                // Mark this block as verified
+                blk.verifiedTransitionId = tid;
+
+                // Update variables
+                blockHash = ts.blockHash;
+                stateRoot = ts.stateRoot;
+
+                tko.safeTransfer(ts.prover, ts.validityBond);
+
+                // Note: We exclusively address the bonds linked to the
+                // transition used for verification. While there may exist
+                // other transitions for this block, we disregard them entirely.
+                // The bonds for these other transitions are burned (more precisely held in custody)
+                // either when the transitions are generated or proven. In such cases, both the
+                // provers and contesters of those transitions forfeit their bonds.
+
+                emit BlockVerified({
+                    blockId: blockId,
+                    prover: ts.prover,
+                    blockHash: blockHash,
+                    stateRoot: stateRoot,
+                    tier: ts.tier
+                });
 
                 ++blockId;
-                ++processed;
+                ++numBlocksVerified;
             }
 
-            if (processed > 0) {
-                uint64 lastVerifiedBlockId = b.lastVerifiedBlockId + processed;
-                state.slotB.lastVerifiedBlockId = lastVerifiedBlockId;
-                state.slotB.lastVerifiedAt = uint64(block.timestamp);
+            if (numBlocksVerified != 0) {
+                uint64 lastVerifiedBlockId = b.lastVerifiedBlockId + numBlocksVerified;
 
-                if (config.relaySignalRoot) {
-                    // Send the L2's signal root to the signal service so other
-                    // TaikoL1  deployments, if they share the same signal
-                    // service, can relay the signal to their corresponding
-                    // TaikoL2 contract.
-                    ISignalService(resolver.resolve("signal_service", false))
-                        .sendSignal(signalRoot);
-                }
-                emit CrossChainSynced(
-                    lastVerifiedBlockId, blockHash, signalRoot
-                );
+                // Update protocol level state variables
+                _state.slotB.lastVerifiedBlockId = lastVerifiedBlockId;
+
+                // Sync chain data
+                _syncChainData(_state, _config, _resolver, lastVerifiedBlockId, stateRoot);
             }
         }
+    }
+
+    /// @notice Emit events used by client/node.
+    function emitEventForClient(TaikoData.State storage _state) internal {
+        emit StateVariablesUpdated({ slotB: _state.slotB });
+    }
+
+    function _syncChainData(
+        TaikoData.State storage _state,
+        TaikoData.Config memory _config,
+        IAddressResolver _resolver,
+        uint64 _lastVerifiedBlockId,
+        bytes32 _stateRoot
+    )
+        private
+    {
+        ISignalService signalService =
+            ISignalService(_resolver.resolve(LibStrings.B_SIGNAL_SERVICE, false));
+
+        (uint64 lastSyncedBlock,) = signalService.getSyncedChainData(
+            _config.chainId, LibStrings.H_STATE_ROOT, 0 /* latest block Id*/
+        );
+
+        if (_lastVerifiedBlockId > lastSyncedBlock + _config.blockSyncThreshold) {
+            _state.slotA.lastSyncedBlockId = _lastVerifiedBlockId;
+            _state.slotA.lastSynecdAt = uint64(block.timestamp);
+
+            signalService.syncChainData(
+                _config.chainId, LibStrings.H_STATE_ROOT, _lastVerifiedBlockId, _stateRoot
+            );
+        }
+    }
+
+    function _isConfigValid(TaikoData.Config memory _config) private view returns (bool) {
+        if (
+            _config.chainId <= 1 || _config.chainId == block.chainid //
+                || _config.blockMaxProposals <= 1
+                || _config.blockRingBufferSize <= _config.blockMaxProposals + 1
+                || _config.blockMaxGasLimit == 0 || _config.livenessBond == 0
+        ) return false;
+
+        return true;
     }
 }

@@ -11,61 +11,58 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: [taiko-runner]
     steps:
       - name: Cancel previous runs
-        uses: styfle/cancel-workflow-action@0.11.0
+        uses: styfle/cancel-workflow-action@0.12.1
         with:
           access_token: ${{ github.token }}
 
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly-2cb875799419c907cc3709e586ece2559e6b340e
 
       - name: Install pnpm dependencies
         uses: ./.github/actions/install-pnpm-dependencies
 
-      - name: protocol - Unit Tests
+      - name: Check formatting
         working-directory: ./packages/protocol
-        run: pnpm clean && pnpm compile:hardhat && pnpm test
+        run: forge fmt --check
 
-      - name: protocol - Generate Genesis
+      - name: Unit Tests
+        working-directory: ./packages/protocol
+        run: pnpm clean && pnpm test
+
+      - name: Generate Genesis
         working-directory: ./packages/protocol
         run: pnpm test:genesis
 
       # TODO: CompilerError: Stack too deep
-      # - name: protocol - Test Coverage
+      # - name: Test Coverage
       #   working-directory: ./packages/protocol
       #   run: pnpm test:coverage
 
-      - name: protocol - Run snapshot (foundry)
+      - name: Run snapshot (foundry)
         working-directory: ./packages/protocol
         run: pnpm snapshot
 
-      - name: protocol - Deploy L1 Contracts
+      - name: Deploy L1 Contracts
         working-directory: ./packages/protocol
         run: |
-          anvil &
+          anvil --hardfork cancun &
           while ! nc -z localhost 8545; do
             sleep 1
           done
-          pnpm deploy:foundry
+          pnpm test:deploy
 
-      # - name: protocol - Upload coverage to Codecov
+      # - name: Upload coverage to Codecov
       #   uses: codecov/codecov-action@v3
       #   with:
       #     directory: ./packages/protocol/coverage
       #     flags: protocol
-
-      # - name: protocol - Generate contract documentation
-      #   run: pnpm -F protocol export:docs
-
-      # - name: protocol - Commit contract documentation
-      #   uses: stefanzweifel/git-auto-commit-action@v4
-      #   with:
-      #     commit_message: Add auto-generated contract documentation
-      #     file_pattern: "**/*.md"

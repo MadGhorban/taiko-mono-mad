@@ -52,6 +52,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/chart/chartByTask": {
+            "get": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Get time series data for displaying charts",
+                "operationId": "get-charts-by-task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "task to query",
+                        "name": "task",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "start date",
+                        "name": "start",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "end date",
+                        "name": "end",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/eventindexer.ChartResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/events": {
             "get": {
                 "consumes": [
@@ -186,6 +229,28 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "eventindexer.ChartItem": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "eventindexer.ChartResponse": {
+            "type": "object",
+            "properties": {
+                "chart": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/eventindexer.ChartItem"
+                    }
+                }
+            }
+        },
         "eventindexer.Stat": {
             "type": "object",
             "properties": {
@@ -195,20 +260,20 @@ const docTemplate = `{
                 "averageProofTime": {
                     "type": "string"
                 },
-                "averageProposerReward": {
+                "feeTokenAddress": {
                     "type": "string"
                 },
                 "id": {
                     "type": "integer"
                 },
+                "numBlocksAssigned": {
+                    "type": "integer"
+                },
                 "numProofs": {
                     "type": "integer"
                 },
-                "numProposerRewards": {
-                    "type": "integer"
-                },
-                "numVerifiedBlocks": {
-                    "type": "integer"
+                "statType": {
+                    "type": "string"
                 }
             }
         },
@@ -265,6 +330,12 @@ const docTemplate = `{
         "paginate.Page": {
             "type": "object",
             "properties": {
+                "error": {
+                    "type": "boolean"
+                },
+                "error_message": {
+                    "type": "string"
+                },
                 "first": {
                     "type": "boolean"
                 },
@@ -298,7 +369,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "eventindexer.jolnir.taiko.xyz",
+	Host:             "eventindexer.katla.taiko.xyz",
 	BasePath:         "",
 	Schemes:          []string{},
 	Title:            "Taiko Eventindexer API",

@@ -1,15 +1,17 @@
 {
+  "draft": true,
   "packages": {
-    ".": {},
+    "packages/blobstorage": {},
     "packages/branding": {},
     "packages/bridge-ui": {},
-    "packages/bridge-ui-v2": {},
     "packages/eventindexer": {},
     "packages/fork-diff": {},
+    "packages/guardian-prover-health-check": {},
+    "packages/guardian-prover-health-check-ui": {},
     "packages/protocol": {},
     "packages/relayer": {},
-    "packages/status-page": {},
-    "packages/website": {},
-    "packages/whitepaper": {}
-  }
+    "packages/taikoon": {},
+    "packages/supplementary-contracts": {}
+  },
+  "separate-pull-requests": true
 }

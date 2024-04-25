@@ -1,46 +1,85 @@
 // SPDX-License-Identifier: MIT
-//  _____     _ _         _         _
-// |_   _|_ _(_) |_____  | |   __ _| |__ ___
-//   | |/ _` | | / / _ \ | |__/ _` | '_ (_-<
-//   |_|\__,_|_|_\_\___/ |____\__,_|_.__/__/
+pragma solidity 0.8.24;
 
-pragma solidity ^0.8.20;
-
-import { IERC165Upgradeable } from
-    "@openzeppelin/contracts-upgradeable/utils/introspection/IERC165Upgradeable.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
 /// @title LibAddress
 /// @dev Provides utilities for address-related operations.
+/// @custom:security-contact security@taiko.xyz
 library LibAddress {
-    /// @dev Sends Ether to the specified address. It is recommended to avoid
-    /// using `.transfer()` due to potential reentrancy issues.
-    /// Reference:
-    /// https://consensys.net/diligence/blog/2019/09/stop-using-soliditys-transfer-now
-    /// @param to The recipient address.
-    /// @param amount The amount of Ether to send in wei.
-    function sendEther(address to, uint256 amount) internal {
-        // Check for zero-value or zero-address transactions
-        if (amount == 0 || to == address(0)) return;
+    bytes4 private constant _EIP1271_MAGICVALUE = 0x1626ba7e;
 
-        // Attempt to send Ether to the recipient address
-        (bool success,) = payable(to).call{ value: amount }("");
+    error ETH_TRANSFER_FAILED();
 
-        // Ensure the transfer was successful
-        require(success, "ETH transfer failed");
+    /// @dev Sends Ether to the specified address. This method will not revert even if sending ether
+    /// fails.
+    /// This function is inspired by
+    /// https://github.com/nomad-xyz/ExcessivelySafeCall/blob/main/src/ExcessivelySafeCall.sol
+    /// @param _to The recipient address.
+    /// @param _amount The amount of Ether to send in wei.
+    /// @param _gasLimit The max amount gas to pay for this transaction.
+    /// @return success_ true if the call is successful, false otherwise.
+    function sendEther(
+        address _to,
+        uint256 _amount,
+        uint256 _gasLimit,
+        bytes memory _calldata
+    )
+        internal
+        returns (bool success_)
+    {
+        // Check for zero-address transactions
+        if (_to == address(0)) revert ETH_TRANSFER_FAILED();
+        // dispatch message to recipient
+        // by assembly calling "handle" function
+        // we call via assembly to avoid memcopying a very large returndata
+        // returned by a malicious contract
+        assembly {
+            success_ :=
+                call(
+                    _gasLimit, // gas
+                    _to, // recipient
+                    _amount, // ether value
+                    add(_calldata, 0x20), // inloc
+                    mload(_calldata), // inlen
+                    0, // outloc
+                    0 // outlen
+                )
+        }
+    }
+
+    /// @dev Sends Ether to the specified address. This method will revert if sending ether fails.
+    /// @param _to The recipient address.
+    /// @param _amount The amount of Ether to send in wei.
+    /// @param _gasLimit The max amount gas to pay for this transaction.
+    function sendEtherAndVerify(address _to, uint256 _amount, uint256 _gasLimit) internal {
+        if (_amount == 0) return;
+        if (!sendEther(_to, _amount, _gasLimit, "")) {
+            revert ETH_TRANSFER_FAILED();
+        }
+    }
+
+    /// @dev Sends Ether to the specified address. This method will revert if sending ether fails.
+    /// @param _to The recipient address.
+    /// @param _amount The amount of Ether to send in wei.
+    function sendEtherAndVerify(address _to, uint256 _amount) internal {
+        sendEtherAndVerify(_to, _amount, gasleft());
     }
 
     function supportsInterface(
-        address addr,
-        bytes4 interfaceId
+        address _addr,
+        bytes4 _interfaceId
     )
         internal
         view
-        returns (bool result)
+        returns (bool result_)
     {
-        try IERC165Upgradeable(addr).supportsInterface(interfaceId) returns (
-            bool _result
-        ) {
-            result = _result;
+        if (!Address.isContract(_addr)) return false;
+
+        try IERC165(_addr).supportsInterface(_interfaceId) returns (bool _result) {
+            result_ = _result;
         } catch { }
     }
 }

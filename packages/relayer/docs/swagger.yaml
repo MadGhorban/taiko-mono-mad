@@ -35,7 +35,7 @@ definitions:
       visible:
         type: integer
     type: object
-host: relayer.jolnir.taiko.xyz
+host: relayer.katla.taiko.xyz
 info:
   contact:
     email: info@taiko.xyz

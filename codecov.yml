@@ -1,7 +1,8 @@
 coverage:
   ignore:
     - "packages/relayer/bindings/**/*"
-    - "packages/relayer/mock/**/*"
+    - "packages/eventindexer/contracts/**/*"
+    - "packages/relayer/pkg/mock/**/*"
     - "packages/relayer/cmd/**/*"
   status:
     project: off
@@ -17,9 +18,6 @@ flag_management:
     - name: relayer
       paths:
         - packages/relayer/**/*
-    - name: bridge-ui
-      paths:
-        - packages/bridge-ui/**/*
 
 comment:
   show_carryforward_flags: true

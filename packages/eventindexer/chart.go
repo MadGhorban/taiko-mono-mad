@@ -17,5 +17,7 @@ type ChartRepository interface {
 		task string,
 		start string,
 		end string,
+		feeTokenAddress string,
+		tier string,
 	) (*ChartResponse, error)
 }

@@ -13,7 +13,7 @@
     },
     "version": "1.0"
   },
-  "host": "eventindexer.jolnir.taiko.xyz",
+  "host": "eventindexer.katla.taiko.xyz",
   "paths": {
     "/assignedBlocks": {
       "get": {
@@ -35,6 +35,45 @@
             "description": "OK",
             "schema": {
               "$ref": "#/definitions/paginate.Page"
+            }
+          }
+        }
+      }
+    },
+    "/chart/chartByTask": {
+      "get": {
+        "consumes": ["application/json"],
+        "produces": ["application/json"],
+        "summary": "Get time series data for displaying charts",
+        "operationId": "get-charts-by-task",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "task to query",
+            "name": "task",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "description": "start date",
+            "name": "start",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "description": "end date",
+            "name": "end",
+            "in": "query",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "$ref": "#/definitions/eventindexer.ChartResponse"
             }
           }
         }
@@ -154,6 +193,28 @@
     }
   },
   "definitions": {
+    "eventindexer.ChartItem": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "eventindexer.ChartResponse": {
+      "type": "object",
+      "properties": {
+        "chart": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/eventindexer.ChartItem"
+          }
+        }
+      }
+    },
     "eventindexer.Stat": {
       "type": "object",
       "properties": {
@@ -163,20 +224,20 @@
         "averageProofTime": {
           "type": "string"
         },
-        "averageProposerReward": {
+        "feeTokenAddress": {
           "type": "string"
         },
         "id": {
           "type": "integer"
         },
+        "numBlocksAssigned": {
+          "type": "integer"
+        },
         "numProofs": {
           "type": "integer"
         },
-        "numProposerRewards": {
-          "type": "integer"
-        },
-        "numVerifiedBlocks": {
-          "type": "integer"
+        "statType": {
+          "type": "string"
         }
       }
     },
@@ -233,6 +294,12 @@
     "paginate.Page": {
       "type": "object",
       "properties": {
+        "error": {
+          "type": "boolean"
+        },
+        "error_message": {
+          "type": "string"
+        },
         "first": {
           "type": "boolean"
         },

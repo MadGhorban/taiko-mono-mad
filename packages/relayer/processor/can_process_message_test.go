@@ -19,6 +19,7 @@ func Test_canProcessMessage(t *testing.T) {
 		eventStatus    relayer.EventStatus
 		messageOwner   common.Address
 		relayerAddress common.Address
+		gasLimit       uint64
 		want           bool
 	}{
 		{
@@ -26,6 +27,7 @@ func Test_canProcessMessage(t *testing.T) {
 			relayer.EventStatusNew,
 			relayerAddr,
 			relayerAddr,
+			5,
 			true,
 		},
 		{
@@ -33,6 +35,7 @@ func Test_canProcessMessage(t *testing.T) {
 			relayer.EventStatusDone,
 			relayerAddr,
 			relayerAddr,
+			5,
 			false,
 		},
 		{
@@ -40,13 +43,15 @@ func Test_canProcessMessage(t *testing.T) {
 			relayer.EventStatusRetriable,
 			relayerAddr,
 			relayerAddr,
+			5,
 			false,
 		},
 		{
-			"cantProcess, eventStatusNewOnlyOwner and relayer is not owner",
-			relayer.EventStatusNewOnlyOwner,
+			"cantProcess, eventStatusNew , gasLimit 0, and relayer is not owner",
+			relayer.EventStatusNew,
 			common.HexToAddress("0x"),
 			relayerAddr,
+			0,
 			false,
 		},
 		{
@@ -54,13 +59,15 @@ func Test_canProcessMessage(t *testing.T) {
 			relayer.EventStatusFailed,
 			common.HexToAddress("0x"),
 			relayerAddr,
+			5,
 			false,
 		},
 		{
-			"canProcess, eventStatusOnlyOwner and relayer address is owner",
-			relayer.EventStatusNewOnlyOwner,
+			"canProcess, eventStatusNew, gasLimit 0, and relayer address is owner",
+			relayer.EventStatusNew,
 			relayerAddr,
 			relayerAddr,
+			5,
 			true,
 		},
 	}
@@ -72,6 +79,7 @@ func Test_canProcessMessage(t *testing.T) {
 				tt.eventStatus,
 				tt.messageOwner,
 				tt.relayerAddress,
+				tt.gasLimit,
 			)
 
 			assert.Equal(t, tt.want, canProcess)

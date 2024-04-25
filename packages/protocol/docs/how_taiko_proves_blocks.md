@@ -28,7 +28,7 @@ A valid transaction (defined in the Ethereum Yellow Paper):
 - Has a gas limit no smaller than the intrinsic gas, _`g0`_, used by the transaction.
 - The sender account balance contains at least the cost, _`v0`_, required in up-front payment.
 - The transaction has a gas limit that is smaller or equal to the amount of gas left in the block (with the block gas limit being the protocol constant _`blockMaxGasLimit`_).
-- The transaction has a basefee that is greater than or equal the basefee of the block.
+- The transaction has a base fee that is greater than or equal to the base fee of the block.
 
 #### Slicing and Consistency
 
@@ -52,8 +52,8 @@ function anchor(
 ) external;
 ```
 
-- A circuit will verify the integrity among: `l1Hash`, `l1SignalRoot`, and `l1SignalServiceAddress`
-- `l1SignalServiceAddress`, `l2SignalServiceAddress` and `parentGasUsed` are directly hashed into the ZKP's instance
+- A circuit will verify the integrity among: `l1Hash`, `l1SignalRoot`, and `l1SignalServiceAddress`.
+- `l1SignalServiceAddress`, `l2SignalServiceAddress` and `parentGasUsed` are directly hashed into the ZKP's instance.
 - `l1Height` and `l1Hash` are both part of the block metadata (`meta.l1Height` and `meta.l1Hash`), the `metaHash` is used to calculate the ZKP instance.
 - `l1SignalRoot` is part of the evidence and is also used to calculate the ZKP instance.
 - The transaction's status code is 1 (success).
@@ -68,7 +68,7 @@ Note that the anchor transaction emits an `Anchored` event that may help ZKP to 
 ZKP shall also check the signature of the anchor transaction:
 
 - The signer must be _`TaikoL2.GOLDEN_TOUCH_ADDRESS`_.
-- The signature must use `1` as the `k` value if the calculated `r` is not `0`, otherwise, `k` must be `2`. See [TaikoL2Signer.sol](https://github.com/taikoxyz/taiko-mono/blob/main/packages/protocol/contracts/L2/TaikoL2Signer.sol) and Taiko [whitepaper](https://taikoxyz.github.io/taiko-mono/taiko-whitepaper.pdf).
+- The signature must use `1` as the `k` value if the calculated `r` is not `0`, otherwise, `k` must be `2`. See [LibL2Signer.sol](https://github.com/taikoxyz/taiko-mono/blob/main/packages/protocol/contracts/L2/LibL2Signer.sol).
 
 ### Block Metadata
 
@@ -81,7 +81,7 @@ struct BlockMetadata {
  uint64 l1Height;
  bytes32 l1Hash;
  bytes32 mixHash;
- bytes32 txListHash;
+ bytes32 blobHash;
  uint24 txListByteStart;
  uint24 txListByteEnd;
  uint32 gasLimit;
@@ -96,7 +96,7 @@ struct BlockMetadata {
 - `l1Height`: The actual block height in L1.
 - `l1Hash`: The actual block hash in L1.
 - `mixHash`: Salted random number to accommodate multiple L2 blocks fitting into one L1 block.
-- `txListHash`: Hash of the transaction list in L2.
+- `blobHash`: Hash of the transaction list in L2.
 - `txListByteStart`: Byte start of the transaction list in L2.
 - `txListByteEnd`: Byte end of the transaction list in L2.
 - `gasLimit`: Gas limit for the L2 block.
@@ -257,7 +257,7 @@ m_timestamp(timestamp)
 m_h1_height(h1Height)
 m_h1_hash(h1Hash)
 m_mix_hash(mixHash)
-m_txlist_hash(txListHash)
+m_txlist_hash(blobHash)
 m_txlist_first(txListByteStart)
 m_txlist_last(txListByteEnd)
 m_treasury(treasury)
@@ -321,7 +321,7 @@ subgraph L1Storage[L1 Storage]
 b_l1_taiko_addr[/taikoL1Address/]
 b_l1_signal_service_addr[/L1 signalServiceAddress/]
 b_l2_signal_service_addr[/L2 signalServiceAddress/]
-b_signal_root[/signalRoot/]
+b_signal_root[/stateRoot/]
 end
 
 L1Storage:::group
@@ -331,7 +331,7 @@ subgraph L2Storage[L2 Storage]
 s_public_input_hash[/publicInputHash/]
 s_parent_timestamp[/parentTimestamp/]
 s_gas_excess[/gasExcess/]
-s_signal_root[/signalRoot/]
+s_signal_root[/stateRoot/]
 end
 
 L2Storage:::group
@@ -340,7 +340,7 @@ subgraph BlockEvidence
 e_meta_hash(metaHash)
 e_parent_hash(parentHash):::transition
 e_block_hash(blockHash)
-e_signal_root(signalRoot)
+e_signal_root(stateRoot)
 e_graffiti(graffiti)
 e_prover(prover)
 e_parent_gas_used(parentGasUsed):::transition

@@ -1,1 +1,1 @@
-export { default } from './Transactions.svelte';
+export { default as Transactions } from './Transactions.svelte';

@@ -109,9 +109,6 @@ dist
 # python
 __pycache__/
 
-# whitepaper
-.pdf
-
 # Ignore .husky for new contributors using lefthook while maintaining
 # backwards compatibility for past contributors
 .husky
@@ -119,3 +116,5 @@ __pycache__/
 
 # VSCode
 .vscode/launch.json
+packages/protocol/config.js
+.vercel

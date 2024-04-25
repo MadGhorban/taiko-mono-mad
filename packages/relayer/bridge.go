@@ -1,31 +1,22 @@
 package relayer
 
 import (
-	"math/big"
-
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/event"
 	"github.com/taikoxyz/taiko-mono/packages/relayer/bindings/bridge"
 )
 
 type Bridge interface {
-	WatchMessageSent(
-		opts *bind.WatchOpts,
-		sink chan<- *bridge.BridgeMessageSent,
-		msgHash [][32]byte,
-	) (event.Subscription, error)
+	IsMessageSent(opts *bind.CallOpts, _message bridge.IBridgeMessage) (bool, error)
 	FilterMessageSent(opts *bind.FilterOpts, msgHash [][32]byte) (*bridge.BridgeMessageSentIterator, error)
-	GetMessageStatus(opts *bind.CallOpts, msgHash [32]byte) (uint8, error)
-	ProcessMessage(opts *bind.TransactOpts, message bridge.IBridgeMessage, proof []byte) (*types.Transaction, error)
-	IsMessageReceived(opts *bind.CallOpts, msgHash [32]byte, srcChainId *big.Int, proof []byte) (bool, error) // nolint
+	FilterMessageProcessed(opts *bind.FilterOpts, msgHash [][32]byte) (*bridge.BridgeMessageProcessedIterator, error)
+	MessageStatus(opts *bind.CallOpts, msgHash [32]byte) (uint8, error)
+	ProcessMessage(opts *bind.TransactOpts, _message bridge.IBridgeMessage, _proof []byte) (*types.Transaction, error)
 	FilterMessageStatusChanged(
 		opts *bind.FilterOpts,
 		msgHash [][32]byte,
 	) (*bridge.BridgeMessageStatusChangedIterator, error)
-	WatchMessageStatusChanged(
-		opts *bind.WatchOpts,
-		sink chan<- *bridge.BridgeMessageStatusChanged,
-		msgHash [][32]byte,
-	) (event.Subscription, error)
+	ParseMessageSent(log types.Log) (*bridge.BridgeMessageSent, error)
+	IsMessageReceived(opts *bind.CallOpts, _message bridge.IBridgeMessage, _proof []byte) (bool, error)
+	SendMessage(opts *bind.TransactOpts, _message bridge.IBridgeMessage) (*types.Transaction, error)
 }
